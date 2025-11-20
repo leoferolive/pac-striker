@@ -33,6 +33,7 @@ export function GameManager() {
 
     const spawnTimer = useRef(2.0)
     const damageTimer = useRef(0)
+    const debugTimer = useRef(0)
     const playerRef = useRef<Object3D>(null!)
     const [enemyBullets, setEnemyBullets] = useState<BulletData[]>([])
     const enemyBulletRefs = useRef<{ [key: string]: Object3D }>({})
@@ -65,7 +66,7 @@ export function GameManager() {
         delete enemyBulletRefs.current[id]
     }, [])
 
-    // Handle ESC key for pausing
+    // Handle ESC key for pausing and P for debug spawn
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             console.log('⌨️ Key pressed:', e.key, 'Current State:', gameState)
@@ -78,6 +79,18 @@ export function GameManager() {
                     resumeGame()
                 }
             }
+
+            // Debug: Force Spawn Enemy
+            if (e.key === 'p' || e.key === 'P') {
+                const id = Math.random().toString(36).substr(2, 9)
+                const spawnVec = new Vector3(5, 0, 5)
+                console.log('🛑 FORCE SPAWNING ENEMY:', id, 'at', spawnVec)
+                setEnemies(prev => {
+                    const newEnemies = [...prev, { id, position: spawnVec }]
+                    console.log('Current Enemies:', newEnemies)
+                    return newEnemies
+                })
+            }
         }
 
         window.addEventListener('keydown', handleKeyDown)
@@ -85,6 +98,19 @@ export function GameManager() {
     }, [gameState, pauseGame, resumeGame])
 
     useFrame((state, delta) => {
+        // Debug Heartbeat
+        debugTimer.current += delta
+        if (debugTimer.current > 1.0) {
+            console.log(
+                '❤️ Heartbeat - State:', gameState,
+                'SpawnTimer:', spawnTimer.current.toFixed(2),
+                'Enemies:', enemies.length,
+                'Bullets:', bullets.length,
+                'PlayerPos:', playerPos.current
+            )
+            debugTimer.current = 0
+        }
+
         // Only run game logic when playing
         if (gameState !== 'playing') return
 
@@ -95,16 +121,19 @@ export function GameManager() {
             let attempts = 0;
 
             // Try multiple times to find a valid spawn position in this frame
-            while (!spawned && attempts < 5) {
+            while (!spawned && attempts < 10) {
                 const spawn = getSafeSpawn()
                 const spawnVec = new Vector3(spawn.x, 0, spawn.z)
 
                 // Ensure spawn is far from player
-                if (spawnVec.distanceTo(playerPos.current) > 10) {
+                const distToPlayer = spawnVec.distanceTo(playerPos.current)
+                if (distToPlayer > 10) {
                     const id = Math.random().toString(36).substr(2, 9)
-                    console.log('👹 Spawning enemy:', id, 'at', spawnVec)
+                    console.log('👹 Spawning enemy:', id, 'at', spawnVec, 'Dist to player:', distToPlayer)
                     setEnemies(prev => [...prev, { id, position: spawnVec }])
                     spawned = true;
+                } else {
+                    // console.log('⚠️ Spawn too close:', distToPlayer)
                 }
                 attempts++;
             }
@@ -112,20 +141,15 @@ export function GameManager() {
             if (spawned) {
                 spawnTimer.current = 0 // Reset timer only if successful
             } else {
-                // If failed, maybe reduce timer slightly to retry sooner, or just keep it > 2.0 to retry next frame
-                // For now, let's just leave it > 2.0 so it retries next frame immediately
-                // But to avoid infinite loop if map is full, we should probably reset it occasionally or have a limit
-                // Let's just reset it to 1.5 so it retries in 0.5s instead of immediately spamming
-                spawnTimer.current = 1.5
-                console.log('⚠️ Could not find valid enemy spawn position (too close to player)')
+                spawnTimer.current = 1.8 // Retry sooner
             }
         }
 
         // Player-Enemy Collision Detection (Proximity damage)
         damageTimer.current += delta
         if (damageTimer.current > 0.5) { // Damage every 0.5 seconds when close
-            Object.entries(enemyRefs.current).forEach(([_eId, eMesh]) => {
-                if (!eMesh || !playerRef.current) return
+            for (const [_eId, eMesh] of Object.entries(enemyRefs.current)) {
+                if (!eMesh || !playerRef.current) continue
 
                 const dist = eMesh.position.distanceTo(playerRef.current.position)
                 if (dist < 2.0) { // Enemy proximity damage radius
@@ -138,12 +162,12 @@ export function GameManager() {
                         endGame()
                     }
                 }
-            })
+            }
         }
 
         // Enemy shooting logic
-        Object.entries(enemyRefs.current).forEach(([eId, eMesh]) => {
-            if (!eMesh || !playerRef.current) return
+        for (const [eId, eMesh] of Object.entries(enemyRefs.current)) {
+            if (!eMesh || !playerRef.current) continue
 
             const dist = eMesh.position.distanceTo(playerRef.current.position)
             if (dist < 15 && Math.random() < 0.003) { // Random shooting when player is near
@@ -152,32 +176,55 @@ export function GameManager() {
                     .normalize()
                 spawnEnemyBullet(eMesh.position.clone(), direction)
             }
-        })
+        }
 
         // Player Bullet-Enemy Collision Detection
-        Object.entries(bulletRefs.current).forEach(([bId, bMesh]) => {
-            if (!bMesh) return
+        // Use for...of to allow breaking
+        const bulletsToRemove: string[] = []
+        const enemiesToRemove: string[] = []
 
-            Object.entries(enemyRefs.current).forEach(([eId, eMesh]) => {
-                if (!eMesh) return
+        for (const [bId, bMesh] of Object.entries(bulletRefs.current)) {
+            if (!bMesh) continue
+            let bulletHit = false
+
+            for (const [eId, eMesh] of Object.entries(enemyRefs.current)) {
+                if (!eMesh || enemiesToRemove.includes(eId)) continue
 
                 const dist = bMesh.position.distanceTo(eMesh.position)
-                if (dist < 2.0) { // Increased collision distance for testing
-                    console.log('🎯 COLLISION DETECTED! Distance:', dist)
-                    removeBullet(bId)
-                    removeEnemy(eId)
-                    addScore(100)
-                    return // Exit both loops after hit
+
+                // Debug log for the first bullet and first enemy to avoid spam
+                if (bId === Object.keys(bulletRefs.current)[0] && eId === Object.keys(enemyRefs.current)[0] && Math.random() < 0.05) {
+                    console.log(`📏 Distance Check - Bullet ${bId.substr(0, 4)} vs Enemy ${eId.substr(0, 4)}: ${dist.toFixed(2)}`)
                 }
-            })
-        })
+
+                if (dist < 2.5) { // Increased collision radius slightly
+                    console.log('🎯 COLLISION DETECTED! Bullet:', bId, 'Enemy:', eId, 'Dist:', dist)
+                    bulletsToRemove.push(bId)
+                    enemiesToRemove.push(eId)
+                    addScore(100)
+                    bulletHit = true
+                    break // Bullet hit something, stop checking other enemies for this bullet
+                }
+            }
+            if (bulletHit) continue // Move to next bullet
+        }
+
+        // Apply removals
+        if (bulletsToRemove.length > 0) {
+            setBullets(prev => prev.filter(b => !bulletsToRemove.includes(b.id)))
+            bulletsToRemove.forEach(id => delete bulletRefs.current[id])
+        }
+        if (enemiesToRemove.length > 0) {
+            setEnemies(prev => prev.filter(e => !enemiesToRemove.includes(e.id)))
+            enemiesToRemove.forEach(id => delete enemyRefs.current[id])
+        }
 
         // Enemy Bullet-Player Collision Detection
-        Object.entries(enemyBulletRefs.current).forEach(([bId, bMesh]) => {
-            if (!bMesh || !playerRef.current) return
+        for (const [bId, bMesh] of Object.entries(enemyBulletRefs.current)) {
+            if (!bMesh || !playerRef.current) continue
 
             const dist = bMesh.position.distanceTo(playerRef.current.position)
-            if (dist < 1.0 + 0.1) { // Player radius + Bullet radius
+            if (dist < 1.2) { // Player radius + Bullet radius
                 removeEnemyBullet(bId)
                 const damageAmount = 15 + Math.random() * 15
                 takeDamage(damageAmount) // Random damage 15-30
@@ -187,8 +234,10 @@ export function GameManager() {
                     endGame()
                 }
             }
-        })
+        }
     })
+
+    console.log('🖼️ GameManager Render. Enemies count:', enemies.length)
 
     return (
         <>

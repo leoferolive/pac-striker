@@ -11,7 +11,7 @@ export function GameOverlay() {
     const wave = useGameStore(state => state.wave)
 
     return (
-        <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute inset-0 pointer-events-none z-50">
             {/* HUD - Always visible when playing or paused */}
             {(gameState === 'playing' || gameState === 'paused') && (
                 <div className="absolute top-0 left-0 right-0 p-4 flex justify-between text-white font-bold text-xl pointer-events-auto">

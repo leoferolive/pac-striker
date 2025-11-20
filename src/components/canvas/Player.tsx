@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Vector3, Group, Raycaster, Plane, Object3D, SpotLight, Euler } from 'three'
 import { useControls } from '@/hooks/useControls'
 import { resolveCollision, getSafeSpawn } from '@/lib/physics'
+import { useGameStore } from '@/store/useGameStore'
 
 interface PlayerProps {
     onShoot?: (pos: Vector3, rot: Euler, color: number | string) => void
@@ -60,8 +61,13 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
         }
     }, [])
 
+    const { gameState } = useGameStore()
+
     useFrame((_state, _delta) => {
         if (!meshRef.current) return
+
+        // Only allow movement and actions if playing
+        if (gameState !== 'playing') return
 
         // Movement
         const v = velocity.current
