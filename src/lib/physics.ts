@@ -1,4 +1,4 @@
-import { MAP_LAYOUT, TILE_SIZE, MAP_COLS, MAP_ROWS } from './constants'
+import { TILE_SIZE, MAP_COLS, MAP_ROWS } from './constants'
 
 export function gridToWorld(c: number, r: number) {
     return {
@@ -13,14 +13,16 @@ export function worldToGrid(x: number, z: number) {
     return { c, r };
 }
 
-export function resolveCollision(pos: { x: number, z: number }, radius: number) {
+export function resolveCollision(pos: { x: number, z: number }, radius: number, mapLayout: number[][]) {
+    if (!mapLayout || mapLayout.length === 0) return;
+
     let centerGrid = worldToGrid(pos.x, pos.z);
 
     for (let r = centerGrid.r - 1; r <= centerGrid.r + 1; r++) {
         for (let c = centerGrid.c - 1; c <= centerGrid.c + 1; c++) {
             if (r < 0 || r >= MAP_ROWS || c < 0 || c >= MAP_COLS) continue;
 
-            if (MAP_LAYOUT[r][c] === 1) {
+            if (mapLayout[r]?.[c] === 1) {
                 // Posição da parede (centro)
                 let wallPos = gridToWorld(c, r);
                 // Limites da parede (AABB)
@@ -58,20 +60,24 @@ export function resolveCollision(pos: { x: number, z: number }, radius: number) 
     }
 }
 
-export function isSolid(x: number, z: number) {
+export function isSolid(x: number, z: number, mapLayout: number[][]) {
+    if (!mapLayout) return true;
     let grid = worldToGrid(x, z);
     if (grid.c < 0 || grid.c >= MAP_COLS || grid.r < 0 || grid.r >= MAP_ROWS) return true;
-    return MAP_LAYOUT[grid.r][grid.c] === 1;
+    return mapLayout[grid.r]?.[grid.c] === 1;
 }
 
-export function getSafeSpawn() {
+export function getSafeSpawn(mapLayout: number[][]) {
     let safe = false;
     let pos = { x: 0, z: 0 };
     let attempts = 0;
+
+    if (!mapLayout || mapLayout.length === 0) return pos;
+
     while (!safe && attempts < 100) {
         let c = Math.floor(Math.random() * (MAP_COLS - 2)) + 1;
         let r = Math.floor(Math.random() * (MAP_ROWS - 2)) + 1;
-        if (MAP_LAYOUT[r][c] === 0) {
+        if (mapLayout[r]?.[c] === 0) {
             let world = gridToWorld(c, r);
             pos.x = world.x;
             pos.z = world.z;

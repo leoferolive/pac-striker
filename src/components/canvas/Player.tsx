@@ -3,14 +3,16 @@ import { useFrame, useThree } from '@react-three/fiber'
 import { Vector3, Group, Raycaster, Plane, Object3D, SpotLight, Euler } from 'three'
 import { useControls } from '@/hooks/useControls'
 import { resolveCollision, getSafeSpawn } from '@/lib/physics'
+import { WEAPONS } from '@/lib/constants'
 import { useGameStore } from '@/store/useGameStore'
 
 interface PlayerProps {
-    onShoot?: (pos: Vector3, rot: Euler, color: number | string) => void
+    onShoot?: (pos: Vector3, rot: Euler, color: number | string, damage: number) => void
     positionRef?: React.MutableRefObject<Vector3>
+    mapLayout: number[][]
 }
 
-export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, ref) => {
+export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef, mapLayout }, ref) => {
     const meshRef = useRef<Group>(null)
     useImperativeHandle(ref, () => meshRef.current!)
     const lightRef = useRef<SpotLight>(null)
@@ -28,7 +30,8 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
 
     // Initialize spawn position
     useLayoutEffect(() => {
-        const spawn = getSafeSpawn()
+        if (mapLayout.length === 0) return
+        const spawn = getSafeSpawn(mapLayout)
         if (meshRef.current) {
             meshRef.current.position.set(spawn.x, 0, spawn.z)
         }
@@ -36,7 +39,7 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
         if (lightRef.current) {
             lightRef.current.target = targetObject
         }
-    }, [targetObject])
+    }, [targetObject, mapLayout])
 
     // Mouse event handlers
     useEffect(() => {
@@ -61,7 +64,23 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
         }
     }, [])
 
-    const { gameState } = useGameStore()
+    const gameState = useGameStore(state => state.gameState)
+    const currentWeapon = useGameStore(state => state.currentWeapon)
+    const switchWeapon = useGameStore(state => state.switchWeapon)
+    const consumeAmmo = useGameStore(state => state.consumeAmmo)
+    const ammo = useGameStore(state => state.ammo)
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (gameState !== 'playing') return
+            if (e.key === '1') switchWeapon('PISTOL')
+            if (e.key === '2') switchWeapon('SHOTGUN')
+            if (e.key === '3') switchWeapon('RIFLE')
+            if (e.key === '4') switchWeapon('RAILGUN')
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [gameState, switchWeapon])
 
     useFrame((_state, _delta) => {
         if (!meshRef.current) return
@@ -84,7 +103,9 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
         meshRef.current.position.add(v)
 
         // Collision
-        resolveCollision(meshRef.current.position, 0.8)
+        if (mapLayout.length > 0) {
+            resolveCollision(meshRef.current.position, 0.8, mapLayout)
+        }
 
         if (positionRef) positionRef.current.copy(meshRef.current.position)
 
@@ -99,14 +120,29 @@ export const Player = forwardRef<Group, PlayerProps>(({ onShoot, positionRef }, 
 
         // Shooting
         if (cooldown.current > 0) cooldown.current--
-        if (mousePressed && cooldown.current <= 0 && onShoot) {
+
+        const weapon = WEAPONS[currentWeapon]
+        const currentAmmo = ammo[currentWeapon]
+
+        if (mousePressed && cooldown.current <= 0 && onShoot && (currentAmmo > 0 || currentAmmo === -1)) {
             // Spawn bullet at gun position
-            // Gun is at 0, 1.2, 0.6 relative to player
             const gunPos = new Vector3(0, 1.2, 0.6)
             gunPos.applyMatrix4(meshRef.current.matrixWorld)
 
-            onShoot(gunPos, meshRef.current.rotation.clone(), 0xfbbf24)
-            cooldown.current = 15 // Delay
+            for (let i = 0; i < weapon.count; i++) {
+                const rot = meshRef.current.rotation.clone()
+                // Apply spread
+                rot.y += (Math.random() - 0.5) * weapon.spread
+
+                onShoot(gunPos, rot, weapon.color, weapon.damage)
+            }
+
+            // Recoil/Kick
+            const kickDir = new Vector3(0, 0, 1).applyEuler(meshRef.current.rotation)
+            meshRef.current.position.add(kickDir.multiplyScalar(weapon.kick * 0.1))
+
+            consumeAmmo()
+            cooldown.current = weapon.delay
         }
     })
 

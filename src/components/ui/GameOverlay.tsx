@@ -3,6 +3,7 @@
 import { useGameStore } from '@/store/useGameStore'
 import { MainMenu } from './MainMenu'
 import { PauseMenu } from './PauseMenu'
+import { HUD } from './HUD'
 
 export function GameOverlay() {
     const gameState = useGameStore(state => state.gameState)
@@ -13,15 +14,7 @@ export function GameOverlay() {
     return (
         <div className="absolute inset-0 pointer-events-none z-50">
             {/* HUD - Always visible when playing or paused */}
-            {(gameState === 'playing' || gameState === 'paused') && (
-                <div className="absolute top-0 left-0 right-0 p-4 flex justify-between text-white font-bold text-xl pointer-events-auto">
-                    <div className="flex gap-8">
-                        <div className="text-red-400">HP: {Math.ceil(health)}</div>
-                        <div className="text-yellow-400">WAVE: {wave}</div>
-                    </div>
-                    <div className="text-cyan-400">SCORE: {score}</div>
-                </div>
-            )}
+            <HUD />
 
             {/* Menus - Enable pointer events for interaction */}
             {gameState === 'menu' && (

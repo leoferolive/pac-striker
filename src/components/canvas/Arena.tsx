@@ -9,21 +9,25 @@ const gridToWorld = (c: number, r: number) => ({
     z: (r * TILE_SIZE) - (MAP_ROWS * TILE_SIZE / 2) + (TILE_SIZE / 2)
 })
 
-export function Arena() {
+interface ArenaProps {
+    mapLayout: number[][]
+}
+
+export function Arena({ mapLayout }: ArenaProps) {
     const floorTex = useGridTexture()
 
     const walls = useMemo(() => {
         const w = []
         for (let r = 0; r < MAP_ROWS; r++) {
             for (let c = 0; c < MAP_COLS; c++) {
-                if (MAP_LAYOUT[r][c] === 1) {
+                if (mapLayout[r] && mapLayout[r][c] === 1) {
                     const pos = gridToWorld(c, r)
                     w.push({ x: pos.x, z: pos.z, key: `${r}-${c}` })
                 }
             }
         }
         return w
-    }, [])
+    }, [mapLayout])
 
     const wallGeo = useMemo(() => new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE), [])
     const wallMat = useMemo(() => new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5, metalness: 0.8 }), [])

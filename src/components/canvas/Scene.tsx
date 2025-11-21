@@ -6,6 +6,8 @@ import { Suspense } from 'react'
 import { GameManager } from './GameManager'
 import * as THREE from 'three'
 
+import { EffectComposer, Bloom } from '@react-three/postprocessing'
+
 export default function Scene() {
     return (
         <div className="h-screen w-full bg-black">
@@ -35,6 +37,10 @@ export default function Scene() {
                 <Suspense fallback={null}>
                     <GameManager />
                 </Suspense>
+
+                <EffectComposer>
+                    <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} radius={0.4} />
+                </EffectComposer>
 
                 {/* <OrbitControls /> */}
             </Canvas>
